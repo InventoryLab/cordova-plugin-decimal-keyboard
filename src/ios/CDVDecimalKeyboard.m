@@ -162,7 +162,7 @@ BOOL isDifferentKeyboardShown=NO;
 -(BOOL)isTextAndDecimal{
     BOOL bln = YES;
     NSString *isText = [wv stringByEvaluatingJavaScriptFromString:@"DecimalKeyboard.getActiveElementType();"];
-    if([isText isEqual:@"text"]){
+    if([isText isEqual:@"text"] || [isText isEqual:@"tel"] || [isText isEqual:@"number"]){
         NSString *isDecimal = [wv stringByEvaluatingJavaScriptFromString:@"DecimalKeyboard.isDecimal();"];
         if(![isDecimal isEqual:@"true"]){
             bln=NO;
