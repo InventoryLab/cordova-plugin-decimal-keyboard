@@ -1,16 +1,15 @@
+#import <WebKit/WebKit.h>
+
 #import "CDVDecimalKeyboard.h"
 
 @implementation CDVDecimalKeyboard
 
-
-UIWebView* wv;
 UIView* ui;
 CGRect cgButton;
 BOOL isDecimalKeyRequired=YES;
 UIButton *decimalButton;
 BOOL isAppInBackground=NO;
 - (void)pluginInitialize {
-    wv = self.webView;
     [[NSNotificationCenter defaultCenter] addObserver: self
                                              selector: @selector(keyboardWillAppear:)
                                                  name: UIKeyboardWillShowNotification
@@ -47,10 +46,16 @@ BOOL isAppInBackground=NO;
 - (void) keyboardWillDisappear: (NSNotification*) n{
     [self removeDecimalButton];
 }
--(void) setDecimalChar{
-    NSString* decimalChar = [wv stringByEvaluatingJavaScriptFromString:@"DecimalKeyboard.getDecimalChar();"];
-    [decimalButton setTitle:decimalChar forState:UIControlStateNormal];
+
+-(void) setDecimalChar {
+    [self evaluateJavaScript:@"DecimalKeyboard.getDecimalChar();"
+           completionHandler:^(NSString * _Nullable response, NSError * _Nullable error) {
+               if (response) {
+                   [decimalButton setTitle:response forState:UIControlStateNormal];
+               }
+           }];
 }
+
 - (void) addDecimalButton{
     if ( UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad )
     {
@@ -117,10 +122,9 @@ BOOL isDifferentKeyboardShown=NO;
     NSDictionary* info = [n userInfo];
     NSNumber* value = [info objectForKey:UIKeyboardAnimationDurationUserInfoKey];
     double dValue = [value doubleValue];
-    
     if(dValue <= 0.0){
         [self removeDecimalButton];
-        return;
+        //return;
     }
     
     dispatch_time_t delay = dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC * dValue);
@@ -131,26 +135,26 @@ BOOL isDifferentKeyboardShown=NO;
     
 }
 - (void) processKeyboardShownEvent{
-    BOOL isDecimalKeyRequired=[self isTextAndDecimal];
-    
-    // create custom button
-    if(decimalButton == nil){
-        if(isDecimalKeyRequired){
-            [self addDecimalButton];
-        }
-    }else{
-        if(isDecimalKeyRequired){
-            decimalButton.hidden=NO;
-            [self setDecimalChar];
+    [self isTextAndDecimal:^(BOOL isDecimalKeyRequired) {
+        // create custom button
+        if(decimalButton == nil){
+            if(isDecimalKeyRequired){
+                [self addDecimalButton];
+            }
         }else{
-            [self removeDecimalButton];
+            if(isDecimalKeyRequired){
+                decimalButton.hidden=NO;
+                [self setDecimalChar];
+            }else{
+                [self removeDecimalButton];
+            }
         }
-    }
+    }];
 }
 
 - (void)buttonPressed:(UIButton *)button {
     [decimalButton setBackgroundColor: [UIColor colorWithRed:210/255.0 green:213/255.0 blue:218/255.0 alpha:1.0]];
-    [wv stringByEvaluatingJavaScriptFromString:@"DecimalKeyboard.addDecimal();"];
+    [self evaluateJavaScript:@"DecimalKeyboard.addDecimal();" completionHandler:nil];
 }
 
 - (void)buttonTapped:(UIButton *)button {
@@ -159,19 +163,25 @@ BOOL isDifferentKeyboardShown=NO;
 - (void)buttonPressCancel:(UIButton *)button{
     [decimalButton setBackgroundColor: [UIColor colorWithRed:210/255.0 green:213/255.0 blue:218/255.0 alpha:1.0]];
 }
--(BOOL)isTextAndDecimal{
-    BOOL bln = YES;
-    NSString *isText = [wv stringByEvaluatingJavaScriptFromString:@"DecimalKeyboard.getActiveElementType();"];
-    if([isText isEqual:@"text"] || [isText isEqual:@"tel"] || [isText isEqual:@"number"]){
-        NSString *isDecimal = [wv stringByEvaluatingJavaScriptFromString:@"DecimalKeyboard.isDecimal();"];
-        if(![isDecimal isEqual:@"true"]){
-            bln=NO;
-        }
-    }else{
-        bln=NO;
-    }
-    return bln;
+
+- (void) isTextAndDecimal:(void (^)(BOOL isTextAndDecimal))completionHandler {
+    [self evaluateJavaScript:@"DecimalKeyboard.getActiveElementType();"
+           completionHandler:^(NSString * _Nullable response, NSError * _Nullable error) {
+               BOOL isText = [response isEqual:@"text"]||[response isEqual:@"tel"]||[response isEqual:@"number"];
+               
+               if (isText) {
+                   [self evaluateJavaScript:@"DecimalKeyboard.isDecimal();"
+                          completionHandler:^(NSString * _Nullable response, NSError * _Nullable error) {
+                              BOOL isDecimal = [response isEqual:@"true"] || [response isEqual:@"1"];
+                              BOOL isTextAndDecimal = isText && isDecimal;
+                              completionHandler(isTextAndDecimal);
+                          }];
+               } else {
+                   completionHandler(NO);
+               }
+           }];
 }
+
 BOOL stopSearching=NO;
 - (void)listSubviewsOfView:(UIView *)view {
     
@@ -211,6 +221,20 @@ BOOL stopSearching=NO;
     }
 }
 
+- (void) evaluateJavaScript:(NSString *)script
+          completionHandler:(void (^ _Nullable)(NSString * _Nullable response, NSError * _Nullable error))completionHandler {
+
+    if ([self.webView isKindOfClass:WKWebView.class]) {
+        WKWebView *webview = (WKWebView*)self.webView;
+        [webview evaluateJavaScript:script completionHandler:^(id result, NSError *error) {
+            if (completionHandler) {
+                if (error) completionHandler(nil, error);
+                else completionHandler([NSString stringWithFormat:@"%@", result], nil);
+            }
+        }];
+    }
+    
+}
 
 @end
 
